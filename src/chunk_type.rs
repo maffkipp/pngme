@@ -1,5 +1,5 @@
-use std::{convert::TryFrom, str::FromStr, fmt, error::Error };
-
+use std::{convert::TryFrom, str::FromStr, fmt };
+use crate::{Error, Result};
 #[derive(Debug)]
 pub struct ChunkType {
     ancillary: u8,
@@ -39,7 +39,7 @@ impl ChunkType {
 }
 
 impl TryFrom<[u8; 4]> for ChunkType {
-    fn try_from(bytes: [u8; 4]) -> std::result::Result<Self, Self::Error> {
+    fn try_from(bytes: [u8; 4]) -> Result<Self> {
         Ok(ChunkType {
             ancillary: bytes[0],
             private: bytes[1],
@@ -47,7 +47,7 @@ impl TryFrom<[u8; 4]> for ChunkType {
             safe_to_copy: bytes[3],
         })
     }
-    type Error = Box<dyn Error>;
+    type Error = Error;
 }
 
 impl PartialEq for ChunkType {
@@ -57,8 +57,8 @@ impl PartialEq for ChunkType {
 }
 
 impl FromStr for ChunkType {
-    type Err = Box<dyn Error>;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
         if s.chars().all(|c| c.is_alphabetic()) {
             let mut a: [u8; 4] = Default::default();
             a.copy_from_slice(&s.as_bytes()[0..4]);

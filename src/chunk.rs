@@ -1,10 +1,9 @@
 use crate::chunk_type::ChunkType;
+use crate::{Error, Result};
 use crc::{Crc, CRC_32_ISO_HDLC};
 use std::{
-    error::Error,
     fmt,
     io::{BufReader, Read},
-    result::Result,
 };
 
 const CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
@@ -18,7 +17,7 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
+    pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
         let crc = calculate_crc(&chunk_type, &data);
 
         Chunk {
@@ -29,39 +28,48 @@ impl Chunk {
         }
     }
 
-    fn data_as_string(&self) -> Result<String, &'static str> {
+    pub fn data_as_string(&self) -> Result<String> {
         let data = self.data.clone();
         match String::from_utf8(data) {
             Ok(data_string) => return Ok(data_string),
-            Err(_) => return Err("not valid utf8"),
+            Err(_) => Err("not valid utf8")?,
         }
     }
 
-    fn length(&self) -> u32 {
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+
+        bytes.extend_from_slice(&self.length.to_be_bytes());
+        bytes.extend_from_slice(&self.chunk_type.bytes());
+        bytes.extend_from_slice(&self.data);
+        bytes.extend_from_slice(&self.crc.to_be_bytes());
+
+        bytes
+    }
+
+    pub fn length(&self) -> u32 {
         self.length
     }
 
-    fn chunk_type(&self) -> &ChunkType {
+    pub fn chunk_type(&self) -> &ChunkType {
         &self.chunk_type
     }
 
-    fn data(&self) -> &[u8] {
+    pub fn data(&self) -> &[u8] {
         &self.data
     }
 
-    fn crc(&self) -> u32 {
+    pub fn crc(&self) -> u32 {
         self.crc
     }
 }
 
 impl TryFrom<&Vec<u8>> for Chunk {
-    type Error = Box<dyn Error>;
-    fn try_from(input_bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-        if input_bytes.len() < 12 {
+    type Error = Error;
+    fn try_from(bytes: &Vec<u8>) -> Result<Self> {
+        if bytes.len() < 12 {
             Err("Invalid chunk length")?;
         }
-        // Get copy of input to operate on
-        let mut bytes = input_bytes.clone();
 
         // Create buffer reader and buffers for length and chunk type
         let mut reader = BufReader::new(&bytes[..]);
@@ -76,30 +84,25 @@ impl TryFrom<&Vec<u8>> for Chunk {
         let length = u32::from_be_bytes(l_buf);
         let chunk_type = ChunkType::try_from(ct_buf)?;
 
-        // Split off the last 4 bytes for the CRC, leaving the rest as the chunk data
-        let crc_bytes = bytes.split_off(bytes.len() - 4);
-        let mut crc = 0;
-        
-        if crc_bytes.len() != 4 {
-            Err("Unexpected CRC length")?;
-        }
+        let data_terminator = length as usize + 8;
+
+        // Slice off the data and crc from the input bytes
+        let crc_bytes = bytes[data_terminator..data_terminator + 4].to_vec();
+        let data = bytes[8..data_terminator].to_vec();
         
         // Bit shift operation to convert from list of bytes to u32
+        let mut crc = 0;
         for (i, b) in crc_bytes.iter().enumerate() {
             let shift = (3 - i) * 8;
             crc = crc + ((*b as u32) << shift);
         }
 
-        let data = bytes[8..].to_vec();
-
+        // Check CRC
         let test_crc = calculate_crc(&chunk_type, &data);
         if test_crc != crc {
             Err("CRC mismatch")?;
         }
 
-        if data.len() as u32 != length {
-            Err("Unexpected data length")?;
-        }
         Ok(Chunk {
             length,
             chunk_type,
