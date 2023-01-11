@@ -1,4 +1,4 @@
-use std::{convert::TryFrom, str::FromStr, fmt };
+use std::{convert::TryFrom, str::FromStr, fmt, error::Error };
 
 #[derive(Debug)]
 pub struct ChunkType {
@@ -47,7 +47,7 @@ impl TryFrom<[u8; 4]> for ChunkType {
             safe_to_copy: bytes[3],
         })
     }
-    type Error = ();
+    type Error = Box<dyn Error>;
 }
 
 impl PartialEq for ChunkType {
@@ -57,14 +57,14 @@ impl PartialEq for ChunkType {
 }
 
 impl FromStr for ChunkType {
-    type Err = ();
+    type Err = Box<dyn Error>;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         if s.chars().all(|c| c.is_alphabetic()) {
             let mut a: [u8; 4] = Default::default();
             a.copy_from_slice(&s.as_bytes()[0..4]);
             Ok(Self::try_from(a)?)
         } else {
-            Err(())
+            Err("Could not convert to string")?
         }        
     }
 }
